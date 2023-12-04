@@ -1,0 +1,65 @@
+# Reference: https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions
+---
+name: Sphinx Linkcheck and format results
+description: |
+  GitHub Action to run Sphinx Linkcheck and format the results into an easily readable format.
+
+inputs:
+  python-version:
+    default: ""
+    description: Setup this version of Python
+    required: true
+  requirements-file:
+    default: ""
+    description: Install the requirements in this file
+    required: true
+  sphinx-directory:
+    default: .
+    description: Directory containing Sphinx conf.py
+    required: true
+  sphinx-options:
+    default: "-W --keep-going"
+    description: Value of SPHINXOPTS
+    required: true
+
+branding:
+  icon: external-link
+  color: yellow
+
+runs:
+  using: composite
+  steps:
+
+    - name: Setup Python
+      if: ${{ inputs.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: "${{ inputs.python-version }}"
+
+    - name: Install Python requirements
+      if: ${{ inputs.requirements-file }}
+      shell: bash
+      run: pip install -r "${{ inputs.requirements-file }}"
+
+    - name: Find Sphinx build directory
+      shell: bash
+      run: |
+        BUILDDIR=$(sed -nE 's/^BUILDDIR\s*=\s*(.*)/\1/p' "${{ inputs.sphinx-directory }}/Makefile")
+        if [ -z "${BUILDDIR}" ]; then
+          echo "ERROR: Could not find BUILDDIR in Makefile"
+          exit 1
+        fi
+        echo SPHINX_BUILDDIR="${BUILDDIR}" >> $GITHUB_ENV
+
+    - name: Sphinx link check
+      shell: bash
+      working-directory: ${{ inputs.sphinx-directory }}
+      run: |
+        make linkcheck SPHINXOPTS='${{ inputs.sphinx-options }}'
+
+    - name: summarise linkcheck issues
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.sphinx-directory }}
+      run: |
+        ${{ github.action_path }}/summarise-linkcheck-output "./${SPHINX_BUILDDIR}/linkcheck/output.json"
